@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: AWS CloudFormation Template for ECS Fargate with High Availability
+
+Parameters:
+  VpcCidrBlock:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR Block for the VPC
+  PublicSubnet1CidrBlock:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: CIDR Block for Public Subnet 1
+  PublicSubnet2CidrBlock:
+    Type: String
+    Default: 10.0.2.0/24
+    Description: CIDR Block for Public Subnet 2
+  PrivateSubnet1CidrBlock:
+    Type: String
+    Default: 10.0.3.0/24
+    Description: CIDR Block for Private Subnet 1
+  PrivateSubnet2CidrBlock:
+    Type: String
+    Default: 10.0.4.0/24
+    Description: CIDR Block for Private Subnet 2
+
+Resources:
+  MyVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-VPC'
+        - Key: managed_by
+          Value: cloudformation
+
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PublicSubnet1CidrBlock
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet1'
+        - Key: managed_by
+          Value: cloudformation
+
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PublicSubnet2CidrBlock
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PublicSubnet2'
+        - Key: managed_by
+          Value: cloudformation
+
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PrivateSubnet1CidrBlock
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet1'
+        - Key: managed_by
+          Value: cloudformation
+
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref MyVPC
+      CidrBlock: !Ref PrivateSubnet2CidrBlock
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-PrivateSubnet2'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-InternetGateway'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyVPCGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref MyVPC
+      InternetGatewayId: !Ref MyInternetGateway
+
+  MySecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Security group for ECS Fargate
+      VpcId: !Ref MyVPC
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: '-1'
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: '-1'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-SecurityGroup'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref MyVPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-RouteTable'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyRoute:
+    Type: 'AWS::EC2::Route'
+    DependsOn: MyVPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref MyRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref MyInternetGateway
+
+  MySubnet1Association:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref MyRouteTable
+
+  MySubnet2Association:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref MyRouteTable
+
+  MyCluster:
+    Type: 'AWS::ECS::Cluster'
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-ECS-Cluster'
+
+  MyTaskDefinition:
+    Type: 'AWS::ECS::TaskDefinition'
+    Properties:
+      Family: !Sub '${AWS::StackName}-TaskFamily'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      ContainerDefinitions:
+        - Name: MySite
+          Image: 'alesson23/site:v1'
+          PortMappings:
+            - ContainerPort: 80
+              HostPort: 80
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-TaskDefinition'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyService:
+    Type: 'AWS::ECS::Service'
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-ECS-Service'
+      Cluster: !Ref MyCluster
+      TaskDefinition: !Ref MyTaskDefinition
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !Ref MySecurityGroup
+          Subnets:
+            - !Ref PublicSubnet1
+            - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Service'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: !Sub '${AWS::StackName}-ALB'
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref MySecurityGroup
+      Scheme: internet-facing
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ALB'
+        - Key: managed_by
+          Value: cloudformation
+
+  MyListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            ContentType: text/plain
+            StatusCode: '200'
+      LoadBalancerArn: !Ref MyLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  MySiteTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      Name: !Sub '${AWS::StackName}-MySiteTG'
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref MyVPC
+
+  MyChallengeRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref MySiteTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - challenge.alessonviana.tech
+      ListenerArn: !Ref MyListener
+      Priority: 1
