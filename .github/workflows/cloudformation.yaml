@@ -9,8 +9,7 @@ on:
 jobs: 
   test-deploy:
     runs-on: ubuntu-latest
-    environment: Test
-    needs: build
+    
     
     steps:
       - uses: actions/download-artifact@v3
