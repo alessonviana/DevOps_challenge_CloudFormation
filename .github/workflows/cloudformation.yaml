@@ -11,12 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     
     
-    steps:
-      - uses: actions/download-artifact@v3
-        with:
-          name: lambda
-          path: artifact
-      
+    steps:      
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -28,5 +23,5 @@ jobs:
         uses: aws-actions/aws-cloudformation-github-deploy@v1
         with:
           name: challenge-cloudformation
-          template: artifact/main.yaml
+          template: ./main.yaml
           no-fail-on-empty-changeset: "1"
