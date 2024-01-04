@@ -22,6 +22,10 @@ Parameters:
     Type: String
     Default: 10.0.4.0/24
     Description: CIDR Block for Private Subnet 2
+  ContainerImage:
+    Type: String
+    Default: alesson23/site:v1
+    Description: This is a Docker Image what we will deploy in our stack
 
 Resources:
   MyVPC:
@@ -172,7 +176,7 @@ Resources:
       Memory: '512'
       ContainerDefinitions:
         - Name: MySite
-          Image: 'alesson23/site:v1'
+          Image: !Ref ContainerImage
           PortMappings:
             - ContainerPort: 80
               HostPort: 80
